@@ -20,7 +20,12 @@ NODE_VERSION="${NODE_VERSION:-v20.20.2}"
 apt-get update -q
 apt-get install -y -q git curl ca-certificates python3 python3-venv
 if [[ "$ROLE" == worker ]]; then
-  apt-get install -y -q docker.io docker-compose-v2 postgresql-client gh $EXTRA_PACKAGES
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor --yes -o /etc/apt/keyrings/cloud.google.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+    > /etc/apt/sources.list.d/google-cloud-sdk.list
+  apt-get update -q
+  apt-get install -y -q docker.io docker-compose-v2 postgresql-client gh google-cloud-cli $EXTRA_PACKAGES
 fi
 
 id threadwright >/dev/null 2>&1 || useradd -m -s /bin/bash threadwright
