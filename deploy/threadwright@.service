@@ -1,0 +1,22 @@
+[Unit]
+Description=Threadwright %i
+After=network-online.target docker.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+User=threadwright
+Group=threadwright
+WorkingDirectory=/opt/threadwright
+EnvironmentFile=/etc/threadwright-%i.env
+Environment=PATH=/home/threadwright/.local/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin
+ExecStart=/opt/threadwright/.venv/bin/threadwright %i
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

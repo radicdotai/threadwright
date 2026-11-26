@@ -1,0 +1,13 @@
+[Unit]
+Description=Cloud SQL proxy @NAME@ (read-only threadwright user)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=threadwright
+ExecStart=/usr/local/bin/cloud-sql-proxy --auto-iam-authn --address 127.0.0.1 --port @PORT@ @INSTANCE@
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
