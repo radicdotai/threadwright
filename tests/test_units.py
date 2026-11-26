@@ -108,7 +108,9 @@ def test_config_requires_settings_and_defaults_the_rest() -> None:
     base = {"GCP_PROJECT": "p", "REPOS_DIR": "/r", "WORK_DIR": "/w", "DB_PATH": "/d.db", "REPOS": "x, y",
             "WORKSPACE_RULES": "/rules.md"}
     cfg = config.load(base)
-    assert cfg.repos == ("x", "y")
+    assert (cfg.repos, cfg.repo_branches) == (("x", "y"), {})
+    mixed = config.load({**base, "REPOS": "x, y:main ,z: "})
+    assert (mixed.repos, mixed.repo_branches) == (("x", "y", "z"), {"y": "main"})
     assert (cfg.base_branch, cfg.max_concurrent, cfg.tasks_subscription) == ("dev", 1, "threadwright-tasks-worker")
     assert (cfg.claude_model, cfg.claude_effort) == ("claude-opus-5-5", "medium")
     with pytest.raises(SystemExit, match="GCP_PROJECT"):

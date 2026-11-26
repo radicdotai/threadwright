@@ -12,10 +12,10 @@ def git(cwd: Path, *args: str) -> str:
     return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
 
 
-def make_mirror(cfg: Config, name: str, tmp_path: Path) -> None:
+def make_mirror(cfg: Config, name: str, tmp_path: Path, branch: str = "dev") -> None:
     origin = tmp_path / "origins" / name
     origin.mkdir(parents=True)
-    git(origin, "init", "-q", "-b", "dev")
+    git(origin, "init", "-q", "-b", branch)
     git(origin, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
     cfg.repos_dir.mkdir(parents=True, exist_ok=True)
     git(cfg.repos_dir, "clone", "-q", str(origin), name)
@@ -33,6 +33,15 @@ def test_prepare_creates_one_worktree_per_repo(cfg: Config, tmp_path: Path) -> N
     for name in cfg.repos:
         assert git(root / name, "branch", "--show-current") == "threadwright/C1-1"
     assert workspace.prepare(cfg, "C1-1") == root
+
+
+def test_prepare_starts_each_repo_from_its_own_base_branch(cfg: Config, tmp_path: Path) -> None:
+    make_mirror(cfg, "svc-a", tmp_path)
+    make_mirror(cfg, "svc-b", tmp_path, branch="main")
+    root = workspace.prepare(dataclasses.replace(cfg, repo_branches={"svc-b": "main"}), "C1-4")
+    for name in cfg.repos:
+        assert git(root / name, "branch", "--show-current") == "threadwright/C1-4"
+    assert git(cfg.repos_dir / "svc-b", "rev-parse", "origin/main") == git(root / "svc-b", "rev-parse", "HEAD")
 
 
 def test_prepare_cleans_up_when_a_repo_is_missing(cfg: Config, tmp_path: Path) -> None:
