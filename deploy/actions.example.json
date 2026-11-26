@@ -1,0 +1,14 @@
+{
+  "approvers": ["U0123456789"],
+  "signer": "threadwright-listener@my-project.iam.gserviceaccount.com",
+  "audience": "my-api",
+  "envs": {
+    "dev": {
+      "api": "https://api.dev.example.com",
+      "key_version": "projects/my-project/locations/us-central1/keyRings/my-keyring/cryptoKeys/threadwright-assertion/cryptoKeyVersions/1",
+      "users": {
+        "someone@example.com": ["<user id in this env>", "<role name>"]
+      }
+    }
+  }
+}
