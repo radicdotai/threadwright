@@ -1,0 +1,25 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git push origin dev:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git push origin HEAD:dev:*)",
+      "Bash(git push origin HEAD:main:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh repo delete:*)",
+      "Bash(gh secret:*)",
+      "Bash(gcloud secrets:*)",
+      "Bash(terraform:*)",
+      "Bash(sudo:*)",
+      "Read(/etc/threadwright-*.env)"
+    ]
+  }
+}
