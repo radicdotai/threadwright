@@ -10,7 +10,7 @@ User=threadwright
 Group=threadwright
 WorkingDirectory=/opt/threadwright
 EnvironmentFile=/etc/threadwright-%i.env
-Environment=PATH=/home/threadwright/.local/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin
+Environment=PATH=/home/threadwright/.local/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=/opt/threadwright/.venv/bin/threadwright %i
 Restart=on-failure
 RestartSec=10
