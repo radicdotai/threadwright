@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -25,6 +25,7 @@ class Config:
     monthly_budget_usd: float | None
     sessions_bucket: str
     action_envs: tuple[str, ...] = ()
+    repo_branches: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -67,9 +68,10 @@ def _csv(env: dict[str, str], name: str) -> tuple[str, ...]:
 
 def load(env: dict[str, str] | None = None) -> Config:
     env = dict(os.environ) if env is None else env
-    repos = _csv(env, "REPOS")
-    if not repos:
+    entries = [entry.partition(":") for entry in _csv(env, "REPOS")]
+    if not entries:
         raise SystemExit("Missing required setting REPOS")
+    repos = tuple(name.strip() for name, _, _ in entries)
     budget = env.get("MONTHLY_BUDGET_USD", "").strip()
     return Config(
         project=_required(env, "GCP_PROJECT"),
@@ -92,6 +94,7 @@ def load(env: dict[str, str] | None = None) -> Config:
         monthly_budget_usd=float(budget) if budget else None,
         sessions_bucket=_get(env, "SESSIONS_BUCKET", ""),
         action_envs=_csv(env, "ACTION_ENVS"),
+        repo_branches={name.strip(): branch.strip() for name, _, branch in entries if branch.strip()},
     )
 
 

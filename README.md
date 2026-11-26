@@ -41,6 +41,8 @@ Everything specific to your setup lives in files you create next to the examples
 | `deploy/mcp.json` (from `mcp.example.json`) | Claude | MCP servers |
 | `deploy/actions.json` (from `actions.example.json`) | listener | Approved-actions targets, see below |
 
+Each worker task starts every repo in `REPOS` from `BASE_BRANCH`; write `name:branch` in the worker's `REPOS` to start that repo from another branch, for example `REPOS=api,web,docs:main`.
+
 `bootstrap.sh` installs `deploy/<role>.env` (or the example) to `/etc/threadwright-<role>.env` the first time only; after that, edit the file on the VM. Secrets belong only in `/etc`, never in git.
 
 ## Setup

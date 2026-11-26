@@ -27,9 +27,10 @@ def prepare(cfg: Config, slug: str) -> Path:
             root.mkdir(parents=True, exist_ok=True)
             for repo in cfg.repos:
                 mirror = cfg.repos_dir / repo
-                _git(mirror, "fetch", "--quiet", "origin", cfg.base_branch)
+                base = cfg.repo_branches.get(repo, cfg.base_branch)
+                _git(mirror, "fetch", "--quiet", "origin", base)
                 _git(mirror, "worktree", "add", "--quiet", "-B", f"threadwright/{slug}", str(root / repo),
-                     f"origin/{cfg.base_branch}")
+                     f"origin/{base}")
             if cfg.workspace_files:
                 shutil.copytree(cfg.workspace_files, root, dirs_exist_ok=True)
             shutil.copyfile(cfg.workspace_rules, root / "CLAUDE.md")
