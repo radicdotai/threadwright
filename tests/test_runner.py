@@ -13,7 +13,7 @@ from threadwright.config import Config
 FAKE_CLAUDE = """#!/usr/bin/env python3
 import json, sys, time
 mode = {mode!r}
-prompt = sys.stdin.read()
+prompt = json.loads(sys.stdin.readline())["message"]["content"]
 if mode == "sleep":
     time.sleep(30)
 if mode == "grandchild":
@@ -31,6 +31,20 @@ if mode == "crash":
     sys.exit(3)
 emit = lambda e: print(json.dumps(e), flush=True)
 emit({{"type": "system", "subtype": "init", "session_id": "sess-1"}})
+if mode == "repeat":
+    for _ in range(9):
+        emit({{"type": "assistant", "session_id": "sess-1", "message": {{"content": [
+            {{"type": "tool_use", "name": "Bash", "input": {{"command": "make test"}}}}]}}}})
+        line = sys.stdin.readline() if _ == 3 else ""
+        if line:
+            emit({{"type": "user", "session_id": "sess-1", "nudge": json.loads(line)["message"]["content"]}})
+    emit({{"type": "result", "session_id": "sess-1", "is_error": False, "result": "gave up"}})
+    sys.exit(0)
+if mode == "wait":
+    second = json.loads(sys.stdin.readline())["message"]["content"]
+    emit({{"type": "result", "session_id": "sess-1", "is_error": False, "result": prompt + " + " + second}})
+    time.sleep(0.2)
+    sys.exit(0)
 emit({{"type": "assistant", "session_id": "sess-1", "message": {{"content": [
     {{"type": "text", "text": "looking"}},
     {{"type": "tool_use", "name": "Bash", "input": {{"command": "make test", "description": "Run tests"}}}}]}}}})
@@ -114,7 +128,7 @@ def test_timeout_kills_the_whole_process_group(cfg: Config, tmp_path: Path) -> N
 def test_failing_progress_callback_stops_claude(cfg: Config, tmp_path: Path) -> None:
     script = tmp_path / "claude-progress"
     script.write_text(
-        "#!/usr/bin/env python3\nimport json, pathlib, subprocess, sys, time\nsys.stdin.read()\n"
+        "#!/usr/bin/env python3\nimport json, pathlib, subprocess, sys, time\nsys.stdin.readline()\n"
         "child = subprocess.Popen(['sleep', '60'])\n"
         "pathlib.Path(sys.argv[0] + '.pid').write_text(str(child.pid))\n"
         "print(json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'name': 'Bash', "
@@ -137,7 +151,7 @@ def test_slack_tokens_never_reach_claude(cfg: Config, tmp_path: Path, monkeypatc
     monkeypatch.setenv("DEV_DB_URL", "postgres://ro@dev")
     script = tmp_path / "claude-env"
     script.write_text(
-        "#!/usr/bin/env python3\nimport json, os, sys\nsys.stdin.read()\n"
+        "#!/usr/bin/env python3\nimport json, os, sys\nsys.stdin.readline()\n"
         "print(json.dumps({'type': 'result', 'is_error': False, 'result': json.dumps(dict(os.environ))}))\n"
     )
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
@@ -159,3 +173,34 @@ def test_command_pins_model_and_effort(cfg: Config) -> None:
     assert cmd[cmd.index("--model") + 1] == "claude-opus-5-5"
     assert cmd[cmd.index("--effort") + 1] == "medium"
     assert cmd[cmd.index("--permission-mode") + 1] == "bypassPermissions"
+
+
+def test_a_message_sent_mid_run_reaches_the_same_run(cfg: Config, tmp_path: Path) -> None:
+    handle = runner.Run()
+    import threading
+    threading.Timer(0.3, lambda: handle.send("also this")).start()
+    result = runner.run(fake(cfg, tmp_path, "wait"), tmp_path, "first", None, lambda _: None, handle=handle)
+    assert result.text == "first + also this"
+    assert not handle.send("too late")
+
+
+def test_stop_ends_the_run_and_says_who_stopped_it(cfg: Config, tmp_path: Path) -> None:
+    handle = runner.Run()
+    import threading
+    threading.Timer(0.3, lambda: handle.stop("Asha")).start()
+    result = runner.run(dataclasses.replace(fake(cfg, tmp_path, "sleep"), task_timeout_s=20), tmp_path, "x", None,
+                        lambda _: None, handle=handle)
+    assert result.is_error and result.text.startswith("Stopped by Asha")
+
+
+def test_a_repeating_step_is_nudged_then_stopped(cfg: Config, tmp_path: Path) -> None:
+    seen: list[dict[str, object]] = []
+    result = runner.run(dataclasses.replace(fake(cfg, tmp_path, "repeat"), task_timeout_s=20), tmp_path, "x", None,
+                        lambda _: None, seen.append)
+    assert any("same step" in str(e.get("nudge", "")) for e in seen)
+    assert result.is_error and "repeated the same step" in result.text
+
+
+def test_extra_env_reaches_claude_but_slack_tokens_do_not() -> None:
+    env = runner.child_env({"SLACK_BOT_TOKEN": "x", "PATH": "/bin"}, {"GH_TOKEN": "t"})
+    assert env == {"PATH": "/bin", "GH_TOKEN": "t"}

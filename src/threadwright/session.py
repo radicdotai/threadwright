@@ -46,7 +46,20 @@ font:12px/1.45 ui-monospace,Menlo,monospace}summary{cursor:pointer;color:#6e6e73
 """
 
 
+_SECRET_NAME = re.compile(r"(?i)(token|secret|key|password|passwd|credential)")
+_LINK_NAME = re.compile(r"(?i)(_url|_dsn)$")
+_secrets: list[str] = []
+
+
+def add_secrets(env: dict[str, str]) -> None:
+    found = {v for k, v in env.items() if len(v) >= 8 and not v.startswith("/")
+             and (_SECRET_NAME.search(k) or (_LINK_NAME.search(k) and "@" in v))}
+    _secrets[:] = sorted(set(_secrets) | found, key=len, reverse=True)
+
+
 def redact(text: str) -> str:
+    for secret in _secrets:
+        text = text.replace(secret, "[redacted]")
     for pattern, replacement in _REDACTIONS:
         text = pattern.sub(replacement, text)
     return text

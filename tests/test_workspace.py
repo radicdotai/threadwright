@@ -62,3 +62,15 @@ def test_prepare_copies_dev_files_into_each_repo(cfg: Config, tmp_path: Path) ->
     root = workspace.prepare(dataclasses.replace(cfg, workspace_files=tmp_path / "extra"), "C1-3")
     assert (root / "svc-a" / ".env").read_text() == "S2S_PRIVATE_KEY=dev\n"
     assert git(root / "svc-a", "status", "--porcelain") == "?? .env"
+
+
+def test_approved_memory_notes_are_copied_into_every_workspace(cfg: Config, tmp_path: Path) -> None:
+    notes = tmp_path / "memory"
+    notes.mkdir()
+    (notes / "b.md").write_text("- staging needs `set app.is_admin`")
+    (notes / "a.md").write_text("- run make test-db first")
+    configured = dataclasses.replace(cfg, memory_dir=notes)
+    root = tmp_path / "ws"
+    root.mkdir()
+    workspace.write_memory(configured, root)
+    assert (root / "MEMORY.md").read_text() == "- run make test-db first\n\n- staging needs `set app.is_admin`\n"

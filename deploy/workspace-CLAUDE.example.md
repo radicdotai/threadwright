@@ -40,6 +40,21 @@ All of these are read-only. Every variable named here is set in the worker's env
 - **MCP servers** listed in `MCP_CONFIG` are available as tools.
 - **GitHub:** `gh`.
 
+## Plans, questions and follow-ups
+
+- **Plan first for big work.** Before a change that touches several files or repos, adds a feature, or that you are unsure about, write your plan to `.threadwright/plan.md` (what changes, where, how you will test it) and stop. People see it in Slack with an Approve button; you continue when someone approves. Small, clear fixes go straight to a pull request. If the task says "Plan only", always do this.
+- **Ask with buttons.** When you need a person to choose (an environment, an approach), write `.threadwright/question.json` as `{"question": "...", "options": ["...", "..."]}` (at most 5 short options) and stop. Their answer comes back to you in this thread. Do everything you can before asking.
+- **CI and reviews on your pull requests come back to you.** A message from "GitHub" means CI failed or someone reviewed your PR. Fix it on the same branch and push. For reviews, reply to each comment and resolve the threads you addressed; if you disagree, reply with why instead of changing code. If a CI failure is not caused by your change, say so and stop.
+- **Messages can arrive while you work.** Treat them as part of the same task.
+
+## Memory
+
+`MEMORY.md` in the workspace root (when present) holds notes people approved from earlier tasks. Check a note against the current code before relying on it. To add one, open a pull request that adds a short file to the memory folder: one fact per note, with the Slack thread and date it came from. Most tasks add nothing.
+
+## Testing UI changes
+
+For a frontend change, start the local stack and use Playwright (`npx playwright`) to open the changed page, check it works, and take a screenshot. Mention in the pull request what you checked.
+
 ## Changing live data
 
 You cannot change live data yourself. When a fix needs an API call, propose it and a human approves it in Slack:

@@ -16,6 +16,8 @@ DB_PROXIES="${DB_PROXIES:-}"
 EXTRA_PACKAGES="${EXTRA_PACKAGES:-}"
 SQL_PROXY_VERSION="${SQL_PROXY_VERSION:-v2.28.1}"
 NODE_VERSION="${NODE_VERSION:-v20.20.2}"
+PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-}"
+EGRESS_ALLOW="${EGRESS_ALLOW:-}"
 
 apt-get update -q
 apt-get install -y -q git curl ca-certificates python3 python3-venv
@@ -44,6 +46,7 @@ command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | env UV_
 (cd "$APP" && UV_PYTHON_DOWNLOADS=never uv sync --frozen --no-dev --python /usr/bin/python3)
 chown -R root:root "$APP"
 chmod -R go-w "$APP"
+chmod 755 "$APP"/deploy/hooks/*.sh
 
 ENV_SRC="$APP/deploy/$ROLE.env"
 [[ -f "$ENV_SRC" ]] || ENV_SRC="$APP/deploy/$ROLE.env.example"
@@ -61,6 +64,34 @@ if [[ "$ROLE" == worker ]]; then
     (cd "$tmp" && grep " $tarball\$" SHASUMS256.txt | sha256sum -c -)
     tar -xJf "$tmp/$tarball" -C /usr/local --strip-components=1
     rm -rf "$tmp"
+  fi
+  if [[ -n "$PLAYWRIGHT_VERSION" ]]; then
+    /usr/local/bin/npx -y "playwright@$PLAYWRIGHT_VERSION" install-deps chromium
+    sudo -iu threadwright /usr/local/bin/npx -y "playwright@$PLAYWRIGHT_VERSION" install chromium
+  fi
+  if [[ -n "$EGRESS_ALLOW" ]]; then
+    apt-get install -y -q tinyproxy
+    : > /etc/tinyproxy/filter
+    for domain in $EGRESS_ALLOW; do
+      printf '(^|\\.)%s$\n' "${domain//./\\.}" >> /etc/tinyproxy/filter
+    done
+    cat > /etc/tinyproxy/tinyproxy.conf <<CONF
+User tinyproxy
+Group tinyproxy
+Port 8888
+Listen 127.0.0.1
+Timeout 600
+MaxClients 100
+Filter "/etc/tinyproxy/filter"
+FilterType ere
+FilterDefaultDeny Yes
+FilterURLs Off
+ConnectPort 443
+ConnectPort 80
+LogLevel Connect
+CONF
+    systemctl enable tinyproxy
+    systemctl restart tinyproxy
   fi
   sudo -iu threadwright git config --global user.name "$GIT_NAME"
   [[ -z "$GIT_EMAIL" ]] || sudo -iu threadwright git config --global user.email "$GIT_EMAIL"

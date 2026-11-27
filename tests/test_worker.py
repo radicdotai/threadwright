@@ -14,7 +14,7 @@ from threadwright.worker import PublishError, StatusTicker, Worker, elapsed_text
 
 FAKE = """#!/usr/bin/env python3
 import json, sys
-prompt = sys.stdin.read()
+prompt = json.loads(sys.stdin.readline())["message"]["content"]
 print(json.dumps({"type": "system", "subtype": "init", "session_id": "sess-9"}), flush=True)
 print(json.dumps({"type": "result", "is_error": False, "session_id": "sess-9", "total_cost_usd": 0.25,
                   "result": json.dumps({"argv": sys.argv[1:], "prompt": prompt})}), flush=True)
@@ -99,7 +99,7 @@ def test_failure_is_reported_and_task_is_not_retried_forever(cfg: Config, tmp_pa
 
 STEPPING = """#!/usr/bin/env python3
 import json, sys
-sys.stdin.read()
+sys.stdin.readline()
 print(json.dumps({"type": "assistant", "message": {"content": [
     {"type": "tool_use", "name": "Bash", "input": {"command": "make test"}}]}}), flush=True)
 print(json.dumps({"type": "result", "is_error": False, "session_id": "s", "total_cost_usd": 0, "result": "ok"}),

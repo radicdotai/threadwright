@@ -26,6 +26,14 @@ class Config:
     sessions_bucket: str
     action_envs: tuple[str, ...] = ()
     repo_branches: dict[str, str] = field(default_factory=dict)
+    github_app_id: str = ""
+    github_installation_id: str = ""
+    github_app_key: Path | None = None
+    git_name: str = ""
+    git_email: str = ""
+    memory_dir: Path | None = None
+    egress_proxy: str = ""
+    triage_model: str = "haiku"
 
 
 @dataclass(frozen=True)
@@ -44,6 +52,16 @@ class ListenerConfig:
     allowed_channels: frozenset[str]
     allowed_users: frozenset[str]
     actions_config: Path | None = None
+    watch_channels: frozenset[str] = frozenset()
+    alert_channels: frozenset[str] = frozenset()
+    alert_skip: str = r"(?i)\bresolved\b"
+    sweep_channel: str = ""
+    sweep_weekday: int = 0
+    sweep_time_utc: str = "04:30"
+    sweep_prompt: Path | None = None
+    github_subscription: str = ""
+    ci_attempts: int = 3
+    review_attempts: int = 5
 
 
 def _required(env: dict[str, str], name: str) -> str:
@@ -95,6 +113,14 @@ def load(env: dict[str, str] | None = None) -> Config:
         sessions_bucket=_get(env, "SESSIONS_BUCKET", ""),
         action_envs=_csv(env, "ACTION_ENVS"),
         repo_branches={name.strip(): branch.strip() for name, _, branch in entries if branch.strip()},
+        github_app_id=_get(env, "GITHUB_APP_ID", ""),
+        github_installation_id=_get(env, "GITHUB_INSTALLATION_ID", ""),
+        github_app_key=_optional_path(env, "GITHUB_APP_KEY"),
+        git_name=_get(env, "GIT_NAME", ""),
+        git_email=_get(env, "GIT_EMAIL", ""),
+        memory_dir=_optional_path(env, "MEMORY_DIR"),
+        egress_proxy=_get(env, "EGRESS_PROXY", ""),
+        triage_model=_get(env, "TRIAGE_MODEL", "haiku"),
     )
 
 
@@ -118,4 +144,14 @@ def load_listener(env: dict[str, str] | None = None) -> ListenerConfig:
         allowed_channels=frozenset(_csv(env, "ALLOWED_CHANNELS")),
         allowed_users=frozenset(_csv(env, "ALLOWED_USERS")),
         actions_config=_optional_path(env, "ACTIONS_CONFIG"),
+        watch_channels=frozenset(_csv(env, "WATCH_CHANNELS")),
+        alert_channels=frozenset(_csv(env, "ALERT_CHANNELS")),
+        alert_skip=_get(env, "ALERT_SKIP", r"(?i)\bresolved\b"),
+        sweep_channel=_get(env, "SWEEP_CHANNEL", ""),
+        sweep_weekday=int(_get(env, "SWEEP_WEEKDAY", "0")),
+        sweep_time_utc=_get(env, "SWEEP_TIME_UTC", "04:30"),
+        sweep_prompt=_optional_path(env, "SWEEP_PROMPT"),
+        github_subscription=_get(env, "GITHUB_SUBSCRIPTION", ""),
+        ci_attempts=int(_get(env, "CI_ATTEMPTS", "3")),
+        review_attempts=int(_get(env, "REVIEW_ATTEMPTS", "5")),
     )
