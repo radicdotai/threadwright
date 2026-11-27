@@ -469,7 +469,7 @@ class Listener:
         self._retrying(self.client.chat_update, channel=channel, ts=update.status_ts, text=text,
                        blocks=_status_blocks(text, channel, ts, running=False))
         self.store.remove_pending(update.status_ts)
-        if update.text:
+        if update.text and not update.plan:
             for part in prompt.chunks(prompt.to_mrkdwn(update.text)):
                 self._retrying(self.client.chat_postMessage, channel=channel, thread_ts=ts, text=part)
         try:

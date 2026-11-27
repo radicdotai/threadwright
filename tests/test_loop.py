@@ -105,6 +105,7 @@ def test_plan_card_approval_starts_the_work_once(lcfg: ListenerConfig) -> None: 
     listener.store.add_pending("S0", "C", "1.5")
     listener.on_update(Update("result", "S0", status="Plan ready in 1 min", text="here", plan="1. change x"))
     card = slack.posted[-1]
+    assert not any(p.get("text") == "here" for p in slack.posted)
     assert [e["action_id"] for e in card["blocks"][1]["elements"]] == ["threadwright_plan_approve",
                                                                          "threadwright_plan_change"]
     listener.card_decision("U2", "CARD", "C|1.5", "approve")
