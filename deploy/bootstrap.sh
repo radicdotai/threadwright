@@ -18,6 +18,7 @@ SQL_PROXY_VERSION="${SQL_PROXY_VERSION:-v2.28.1}"
 NODE_VERSION="${NODE_VERSION:-v20.20.2}"
 PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-}"
 EGRESS_ALLOW="${EGRESS_ALLOW:-}"
+GITHUB_APP_KEY_SECRET="${GITHUB_APP_KEY_SECRET:-}"
 
 apt-get update -q
 apt-get install -y -q git curl ca-certificates python3 python3-venv
@@ -92,6 +93,14 @@ LogLevel Connect
 CONF
     systemctl enable tinyproxy
     systemctl restart tinyproxy
+  fi
+  if [[ -n "$GITHUB_APP_KEY_SECRET" ]]; then
+    umask 077
+    gcloud secrets versions access latest --secret "$GITHUB_APP_KEY_SECRET" --project "$PROJECT" \
+      > /etc/threadwright-github-app.pem
+    umask 022
+    chown root:threadwright /etc/threadwright-github-app.pem
+    chmod 640 /etc/threadwright-github-app.pem
   fi
   sudo -iu threadwright git config --global user.name "$GIT_NAME"
   [[ -z "$GIT_EMAIL" ]] || sudo -iu threadwright git config --global user.email "$GIT_EMAIL"
