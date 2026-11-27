@@ -2,7 +2,7 @@ import ctypes
 import logging
 import sys
 
-from threadwright import config, listener, worker
+from threadwright import config, github, listener, worker
 
 _PR_SET_DUMPABLE = 4
 
@@ -22,8 +22,10 @@ def main() -> None:
         listener.run(config.load_listener())
     elif role == "worker":
         worker.run(config.load())
+    elif role == "receiver":
+        github.run_receiver()
     else:
-        raise SystemExit("usage: threadwright listener|worker")
+        raise SystemExit("usage: threadwright listener|worker|receiver")
 
 
 if __name__ == "__main__":

@@ -19,7 +19,19 @@
       "Bash(gcloud secrets:*)",
       "Bash(terraform:*)",
       "Bash(sudo:*)",
-      "Read(/etc/threadwright-*.env)"
+      "Read(/etc/threadwright-*)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/threadwright/deploy/hooks/commit-check.sh"
+          }
+        ]
+      }
     ]
   }
 }

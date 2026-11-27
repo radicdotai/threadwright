@@ -26,6 +26,9 @@ class Task:
     event: SlackMessage
     thread: list[SlackMessage]
     channel_recent: list[SlackMessage] = field(default_factory=list)
+    kind: str = "task"
+    plan_only: bool = False
+    fresh: bool = False
 
 
 @dataclass(frozen=True)
@@ -39,6 +42,10 @@ class Update:
     failed: bool = False
     session_url: str = ""
     actions: list[dict[str, Any]] = field(default_factory=list)
+    plan: str = ""
+    question: dict[str, Any] = field(default_factory=dict)
+    channel: str = ""
+    thread_ts: str = ""
 
 
 def encode(item: Task | Update) -> bytes:
@@ -53,7 +60,8 @@ def decode_task(data: bytes) -> Task:
     raw = json.loads(data)
     return Task(raw["event_id"], raw["channel"], raw["thread_ts"], raw["status_ts"], raw["asker"],
                 _message(raw["event"]), [_message(m) for m in raw["thread"]],
-                [_message(m) for m in raw.get("channel_recent", [])])
+                [_message(m) for m in raw.get("channel_recent", [])], raw.get("kind", "task"),
+                bool(raw.get("plan_only")), bool(raw.get("fresh")))
 
 
 def decode_update(data: bytes) -> Update:

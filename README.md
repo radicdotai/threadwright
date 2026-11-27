@@ -25,8 +25,27 @@ Slack ──Socket Mode──▶ listener (e2-micro, always on, holds Slack toke
 | Plain reply in a channel thread | Ignored, so people can talk; tag `@threadwright` again to continue |
 | DM to the app (text or file) | Starts a task; replies in that DM thread continue it |
 | `@threadwright hold 30m` (or `2h`, max 4 h) | Wakes the worker and keeps it awake until then, for hands-on admin work. No Claude run. `@threadwright hold off` releases it |
+| `@threadwright stop`, or the Stop button on the status message | Stops the running task; work so far stays on the branch |
+| `@threadwright !plan <task>` | Investigates and posts a plan with Approve / Request changes buttons before changing code |
+| `@threadwright !new <task>` | Starts a fresh Claude session in the same thread |
+| A tag while a task is running in that thread | Goes into the running task instead of waiting |
+| A bot message in an `ALERT_CHANNELS` channel | Investigates the alert in its thread (resolved alerts and repeats within 6 h are skipped) |
+| A post in a `WATCH_CHANNELS` channel | A quick yes/no check decides whether it is an actionable request; only clear requests start a task, everything else is left alone |
+| CI fails or someone reviews a PR on a `threadwright/` branch | The same thread's session fixes it (`CI_ATTEMPTS` and `REVIEW_ATTEMPTS` per PR per day) |
+| `SWEEP_CHANNEL` + `SWEEP_PROMPT` | A weekly task posted in that channel (`SWEEP_WEEKDAY`, `SWEEP_TIME_UTC`) |
 
 Only full members of your Slack workspace can use it: guests, Slack Connect users and bots are refused. `ALLOWED_USERS` and `ALLOWED_CHANNELS` narrow it further.
+
+## Finishing the job
+
+- **Plans and questions.** The agent writes `.threadwright/plan.md` for big work, or `.threadwright/question.json` to ask a multiple-choice question. Both appear in Slack with buttons any full workspace member can press, and the answer resumes the session.
+- **Done means pushed.** A Stop hook (`deploy/hooks/commit-check.sh`, wired in `claude-settings.json`) sends the agent back to work if a repo still has uncommitted or unpushed changes.
+- **Stuck detection.** After the same step repeats 4 times the agent is told to change approach; at 7 it is stopped and says so.
+- **PR follow-up.** Run the receiver (`threadwright receiver`, the `Dockerfile` here) on Cloud Run as a GitHub App webhook. It checks the signature and forwards only failed workflow runs on the bot's own commits and human reviews on `threadwright/` branches to the `GITHUB_TOPIC` Pub/Sub topic; set `GITHUB_SUBSCRIPTION` on the listener. `BOT_AUTHORS` lists commit author names that count as the bot besides `*[bot]`.
+- **GitHub App identity.** Set `GITHUB_APP_ID`, `GITHUB_INSTALLATION_ID` and `GITHUB_APP_KEY` (path to the private key) on the worker and it hands Claude a fresh installation token as `GH_TOKEN` for each run. `GIT_NAME` / `GIT_EMAIL` set the commit author.
+- **Memory.** `MEMORY_DIR` holds approved notes (one fact per file). They are copied into each workspace as `MEMORY.md`; the agent proposes new ones by pull request.
+- **Egress allowlist.** `EGRESS_ALLOW` in `site.env` installs a local proxy that only reaches the listed domains, and `EGRESS_PROXY=http://127.0.0.1:8888` points Claude's tools at it. Tools that ignore proxy settings are not blocked, so treat it as a guard rail, not a wall.
+- **UI checks.** `PLAYWRIGHT_VERSION` in `site.env` installs Playwright and Chromium on the worker.
 
 ## Configuration files
 
@@ -141,6 +160,10 @@ An always-on worker would be ~$196/month. Set `IDLE_ACTION=suspend` to keep Dock
 - With a subscription login, `cost_usd` is the API-equivalent figure, not money billed.
 - Old thread folders under `/srv/threadwright/work` are not cleaned up yet.
 - GCP only: the worker VM, queues, session pages and signing key all use Google Cloud.
+- Claude runs as the same Unix user as the worker, so anything the worker can read (the GitHub App key, a `gh` login, the env file through Bash) Claude can read too. Scope the GitHub App to the repos and permissions it needs; a separate user for Claude is the real fix.
+- The egress proxy is a guard rail: tools that ignore proxy settings are not blocked without firewall rules.
+- Watched-channel posts each wake the worker for a short yes/no check; pending checks are forgotten if the listener restarts.
+- A Stop sent while the worker's queue is full waits until a slot frees up.
 
 ## Development
 

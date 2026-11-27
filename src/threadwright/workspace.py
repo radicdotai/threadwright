@@ -18,9 +18,16 @@ def _git(cwd: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True, timeout=_GIT_TIMEOUT_S)
 
 
+def write_memory(cfg: Config, root: Path) -> None:
+    notes = sorted(cfg.memory_dir.glob("*.md")) if cfg.memory_dir and cfg.memory_dir.is_dir() else []
+    if notes:
+        (root / "MEMORY.md").write_text("\n\n".join(n.read_text().strip() for n in notes) + "\n")
+
+
 def prepare(cfg: Config, slug: str) -> Path:
     root = cfg.work_dir / slug
     if (root / "CLAUDE.md").exists():
+        write_memory(cfg, root)
         return root
     with _git_lock:
         try:
@@ -34,6 +41,7 @@ def prepare(cfg: Config, slug: str) -> Path:
             if cfg.workspace_files:
                 shutil.copytree(cfg.workspace_files, root, dirs_exist_ok=True)
             shutil.copyfile(cfg.workspace_rules, root / "CLAUDE.md")
+            write_memory(cfg, root)
         except Exception:
             shutil.rmtree(root, ignore_errors=True)
             for repo in cfg.repos:

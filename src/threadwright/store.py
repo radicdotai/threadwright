@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS proposals (
     actions TEXT NOT NULL, status TEXT NOT NULL, created_at REAL NOT NULL,
     decided_by TEXT, decided_at REAL, result TEXT
 );
+CREATE TABLE IF NOT EXISTS events (key TEXT NOT NULL, at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
@@ -46,6 +48,27 @@ class Store:
             "DO UPDATE SET session_id = excluded.session_id, updated_at = excluded.updated_at",
             (thread, session_id, time.time()),
         )
+
+    def clear_session(self, thread: str) -> None:
+        self._write("DELETE FROM sessions WHERE thread = ?", (thread,))
+
+    def count_since(self, key: str, since: float) -> int:
+        row = self._one("SELECT COUNT(*) FROM events WHERE key = ? AND at >= ?", (key, since))
+        return int(str(row[0])) if row else 0
+
+    def note(self, key: str) -> None:
+        self._write("INSERT INTO events VALUES (?, ?)", (key, time.time()))
+
+    def get(self, key: str) -> str | None:
+        row = self._one("SELECT value FROM kv WHERE key = ?", (key,))
+        return str(row[0]) if row else None
+
+    def claim(self, key: str, value: str) -> bool:
+        with self._lock, self._db:
+            return self._db.execute("INSERT OR IGNORE INTO kv VALUES (?, ?)", (key, value)).rowcount == 1
+
+    def put(self, key: str, value: str) -> None:
+        self._write("INSERT OR REPLACE INTO kv VALUES (?, ?)", (key, value))
 
     def log_run(self, thread: str, asker: str, started_at: float, cost_usd: float, is_error: bool) -> None:
         self._write("INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?)",
