@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 _MAX_FILE_BYTES = 6 * 1024 * 1024
 _HANDLED_SUBTYPES = {None, "file_share", "thread_broadcast"}
 _MAX_THREAD_MESSAGES = 200
+_CHANNEL_CONTEXT = 30
 _TICK_S = 30.0
 _MAX_HOLD_MIN = 240
 FENCE = "`" * 3
@@ -129,6 +130,16 @@ class Listener:
                 replies = [m for m in messages[1:] if not self._is_own(m)]
                 return messages[:1] + replies[-(_MAX_THREAD_MESSAGES - 1):]
 
+    def _recent(self, channel: str, ts: str) -> list[SlackMessage]:
+        try:
+            page = self.client.conversations_history(channel=channel, latest=ts, inclusive=False,
+                                                     limit=_CHANNEL_CONTEXT)
+        except Exception:
+            log.warning("could not read recent messages in %s", channel)
+            return []
+        return [SlackMessage(self.name(m.get("user")), m.get("text", ""))
+                for m in reversed(page["messages"]) if not self._is_own(m)]
+
     def build_task(self, event: dict[str, Any], status_ts: str) -> Task:
         channel, ts = thread_key(event)
         history = self._history(channel, ts)
@@ -137,7 +148,9 @@ class Listener:
         thread = [current if m.get("ts") == event["ts"] else self._message(m, budget) for m in history]
         if not any(m.get("ts") == event["ts"] for m in history):
             thread.append(current)
-        return Task(f"{channel}:{event['ts']}", channel, ts, status_ts, self.name(event["user"]), current, thread)
+        recent = [] if event.get("thread_ts") else self._recent(channel, ts)
+        return Task(f"{channel}:{event['ts']}", channel, ts, status_ts, self.name(event["user"]), current, thread,
+                    recent)
 
     def submit(self, event: dict[str, Any]) -> None:
         channel, ts = thread_key(event)
