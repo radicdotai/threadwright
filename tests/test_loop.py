@@ -1,4 +1,5 @@
 import dataclasses
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -57,11 +58,13 @@ def test_the_same_alert_starts_one_investigation(lcfg: ListenerConfig) -> None: 
     assert alert_key("#1 API 5xx firing") == alert_key("#2 API 5xx firing")
 
 
-def test_watched_posts_are_triaged_then_claimed(lcfg: ListenerConfig) -> None:  # noqa: F811
+def test_watched_posts_are_triaged_then_claimed(lcfg: ListenerConfig, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
     listener, slack, sent = make(lcfg, [{"ts": "5", "user": "U2", "text": "checkout is broken"}])
     event = {"type": "message", "channel": "B", "ts": "5", "user": "U2", "text": "checkout is broken"}
     listener.watch(event)
     assert sent[-1].kind == "triage" and sent[-1].status_ts == "" and slack.posted == []
+    monkeypatch.setattr(threading, "Thread", lambda target, args=(), daemon=None: type(
+        "Now", (), {"start": lambda self: target(*args)})())
     listener.on_update(Update("claim", channel="B", thread_ts="5", event_ts="5"))
     assert sent[-1].kind == "task" and sent[-1].event.text.startswith("This was posted")
     assert slack.posted[-1]["text"] == "Queued…"
@@ -76,11 +79,19 @@ def test_skipped_posts_stay_silent(lcfg: ListenerConfig) -> None:  # noqa: F811
 
 def test_ci_failures_go_to_the_thread_until_the_daily_cap(lcfg: ListenerConfig) -> None:  # noqa: F811
     listener, slack, sent = make(dataclasses.replace(lcfg, ci_attempts=2), [])
+    listener.on_github(ci())
+    assert sent == []
+    listener.store.put("thread:C:1.5", "1")
     for _ in range(4):
         listener.on_github(ci())
     assert len(sent) == 2 and all(t.channel == "C" and t.thread_ts == "1.5" for t in sent)
     assert "Attempt 1 of 2" in sent[0].event.text and "Attempt 2 of 2" in sent[1].event.text
     assert sum("limit of 2" in p["text"] for p in slack.posted) == 1
+
+
+def test_double_clicks_claim_a_card_once(lcfg: ListenerConfig) -> None:  # noqa: F811
+    listener, _, _ = make(lcfg, [])
+    assert listener.store.claim("card:X", "U1") and not listener.store.claim("card:X", "U2")
 
 
 def test_events_on_other_branches_are_ignored(lcfg: ListenerConfig) -> None:  # noqa: F811

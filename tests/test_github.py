@@ -10,18 +10,25 @@ from threadwright import github, workspace
 BRANCH = "threadwright/" + workspace.thread_slug("C0ABC", "1795672308.099549")
 
 
-def run(conclusion: str = "failure", author: str = "threadwright[bot]", branch: str = BRANCH) -> dict[str, object]:
+BOTS = frozenset({"tw-app[bot]"})
+
+
+def run(conclusion: str = "failure", actor: str = "tw-app[bot]", branch: str = BRANCH,
+        head: str = "acme/api") -> dict[str, object]:
     return {"action": "completed", "repository": {"full_name": "acme/api"},
             "workflow_run": {"conclusion": conclusion, "head_branch": branch, "head_sha": "abc1234def", "name": "ci",
                              "html_url": "https://gh/run/1", "pull_requests": [{"number": 7}],
-                             "head_commit": {"author": {"name": author, "email": "x@y"}}}}
+                             "actor": {"login": actor}, "head_repository": {"full_name": head},
+                             "head_commit": {"author": {"name": "x[bot]", "email": "x@y"}}}}
 
 
-def review(login: str = "ravi", state: str = "changes_requested", kind: str = "User") -> dict[str, object]:
+def review(login: str = "ravi", state: str = "changes_requested", kind: str = "User", role: str = "MEMBER",
+           head: str = "acme/api") -> dict[str, object]:
     return {"action": "submitted", "repository": {"full_name": "acme/api"},
             "review": {"state": state, "body": "rename this", "html_url": "https://gh/r/1",
-                       "user": {"login": login, "type": kind}},
-            "pull_request": {"number": 7, "html_url": "https://gh/pr/7", "head": {"ref": BRANCH, "sha": "abc"}}}
+                       "author_association": role, "user": {"login": login, "type": kind}},
+            "pull_request": {"number": 7, "html_url": "https://gh/pr/7",
+                             "head": {"ref": BRANCH, "sha": "abc", "repo": {"full_name": head}}}}
 
 
 def test_branch_maps_back_to_its_slack_thread() -> None:
@@ -29,21 +36,25 @@ def test_branch_maps_back_to_its_slack_thread() -> None:
     assert github.thread_of("feature/x") is None
 
 
-def test_only_failed_runs_of_the_bots_own_commits_on_its_branches_count() -> None:
-    event = github.pr_event("workflow_run", run(), frozenset())
+def test_only_failed_runs_pushed_by_the_bot_on_its_own_branches_count() -> None:
+    event = github.pr_event("workflow_run", run(), BOTS)
     assert event and (event.kind, event.pr, event.repo) == ("ci", 7, "acme/api")
-    assert github.pr_event("workflow_run", run(conclusion="success"), frozenset()) is None
-    assert github.pr_event("workflow_run", run(author="Ravi"), frozenset()) is None
-    assert github.pr_event("workflow_run", run(author="Acme Bot"), frozenset({"Acme Bot"}))
-    assert github.pr_event("workflow_run", run(branch="main"), frozenset()) is None
+    assert github.pr_event("workflow_run", run(conclusion="success"), BOTS) is None
+    assert github.pr_event("workflow_run", run(actor="ravi"), BOTS) is None
+    assert github.pr_event("workflow_run", run(actor="human[bot]"), BOTS) is None
+    assert github.pr_event("workflow_run", run(head="evil/api"), BOTS) is None
+    assert github.pr_event("workflow_run", run(branch="main"), BOTS) is None
 
 
-def test_reviews_from_people_count_but_approvals_and_bots_do_not() -> None:
-    event = github.pr_event("pull_request_review", review(), frozenset())
+def test_only_reviews_from_trusted_people_on_same_repo_branches_count() -> None:
+    event = github.pr_event("pull_request_review", review(), BOTS)
     assert event and event.kind == "review" and event.by == "ravi" and event.detail == "rename this"
-    assert github.pr_event("pull_request_review", review(state="approved"), frozenset()) is None
-    assert github.pr_event("pull_request_review", review(kind="Bot"), frozenset()) is None
-    assert github.pr_event("pull_request_review", review(login="ci-bot"), frozenset({"ci-bot"})) is None
+    assert github.pr_event("pull_request_review", review(state="approved"), BOTS) is None
+    assert github.pr_event("pull_request_review", review(kind="Bot"), BOTS) is None
+    assert github.pr_event("pull_request_review", review(login="tw-app[bot]"), BOTS) is None
+    assert github.pr_event("pull_request_review", review(role="NONE"), BOTS) is None
+    assert github.pr_event("pull_request_review", review(role="CONTRIBUTOR"), BOTS) is None
+    assert github.pr_event("pull_request_review", review(head="stranger/api"), BOTS) is None
 
 
 def test_signature_check_needs_the_secret() -> None:
@@ -54,10 +65,11 @@ def test_signature_check_needs_the_secret() -> None:
     assert github.signed("s3cret", body, good)
     assert not github.signed("s3cret", body + b" ", good)
     assert not github.signed("", body, good)
+    assert not github.signed("s3cret", body, "sha256=\u00e9")
 
 
 def test_event_round_trips_through_pubsub() -> None:
-    event = github.pr_event("pull_request_review", review(), frozenset())
+    event = github.pr_event("pull_request_review", review(), BOTS)
     assert event and github.from_json(github.to_json(event)) == event
 
 

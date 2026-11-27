@@ -17,8 +17,10 @@ log = logging.getLogger(__name__)
 
 BRANCH_PREFIX = "threadwright/"
 _SLUG = re.compile(r"^([A-Z0-9]+)-(\d+)-(\d+)$")
-_TOKEN_TTL_S = 50 * 60
+_TOKEN_TTL_S = 5 * 60
 _MAX_BODY = 4000
+_MAX_PAYLOAD = 1024 * 1024
+_TRUSTED = {"OWNER", "MEMBER", "COLLABORATOR"}
 
 
 @dataclass(frozen=True)
@@ -40,23 +42,19 @@ def thread_of(branch: str) -> tuple[str, str] | None:
 
 
 def signed(secret: str, body: bytes, signature: str) -> bool:
-    expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return bool(secret) and hmac.compare_digest(expected, signature)
-
-
-def _is_bot(name: str, login: str, bots: frozenset[str]) -> bool:
-    return name.endswith("[bot]") or login.endswith("[bot]") or bool({name, login} & bots)
+    expected = ("sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()).encode()
+    return bool(secret) and hmac.compare_digest(expected, signature.encode("utf-8", "replace"))
 
 
 def pr_event(kind: str, payload: dict[str, Any], bots: frozenset[str]) -> PrEvent | None:
     repo = str((payload.get("repository") or {}).get("full_name") or "")
     if kind == "workflow_run" and payload.get("action") == "completed":
         run = payload.get("workflow_run") or {}
-        author = (run.get("head_commit") or {}).get("author") or {}
+        actor = str((run.get("triggering_actor") or run.get("actor") or {}).get("login") or "")
         prs = run.get("pull_requests") or []
         if run.get("conclusion") != "failure" or not prs or not thread_of(str(run.get("head_branch") or "")):
             return None
-        if not _is_bot(str(author.get("name") or ""), str(author.get("email") or ""), bots):
+        if actor not in bots or (run.get("head_repository") or {}).get("full_name") != repo:
             return None
         number = int(prs[0]["number"])
         return PrEvent("ci", repo, str(run["head_branch"]), number, f"https://github.com/{repo}/pull/{number}",
@@ -67,7 +65,11 @@ def pr_event(kind: str, payload: dict[str, Any], bots: frozenset[str]) -> PrEven
         branch = str((pr.get("head") or {}).get("ref") or "")
         if review.get("state") not in ("commented", "changes_requested") or not thread_of(branch):
             return None
-        if user.get("type") == "Bot" or _is_bot("", str(user.get("login") or ""), bots):
+        if user.get("type") == "Bot" or str(user.get("login") or "") in bots:
+            return None
+        if review.get("author_association") not in _TRUSTED:
+            return None
+        if ((pr.get("head") or {}).get("repo") or {}).get("full_name") != repo:
             return None
         return PrEvent("review", repo, branch, int(pr["number"]), str(pr.get("html_url") or ""),
                        str((pr.get("head") or {}).get("sha") or ""), str(user.get("login") or ""),
@@ -131,12 +133,20 @@ def serve(secret: str, bots: frozenset[str], publish: Callable[[bytes], None], p
             self.end_headers()
             self.wfile.write(b"ok")
 
+        def _reply(self, code: int) -> None:
+            self.send_response(code)
+            self.end_headers()
+
         def do_POST(self) -> None:
-            body = self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 25 * 1024 * 1024))
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+            except ValueError:
+                return self._reply(400)
+            if not 0 < length <= _MAX_PAYLOAD:
+                return self._reply(413 if length else 400)
+            body = self.rfile.read(length)
             if not signed(secret, body, self.headers.get("X-Hub-Signature-256", "")):
-                self.send_response(401)
-                self.end_headers()
-                return
+                return self._reply(401)
             try:
                 event = pr_event(self.headers.get("X-GitHub-Event", ""), json.loads(body), bots)
                 if event:
@@ -144,11 +154,8 @@ def serve(secret: str, bots: frozenset[str], publish: Callable[[bytes], None], p
                     log.info("forwarded %s on %s#%s", event.kind, event.repo, event.pr)
             except Exception:
                 log.exception("could not handle webhook")
-                self.send_response(500)
-                self.end_headers()
-                return
-            self.send_response(204)
-            self.end_headers()
+                return self._reply(500)
+            self._reply(204)
 
         def log_message(self, *_: Any) -> None:
             return

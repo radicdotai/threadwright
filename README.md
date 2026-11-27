@@ -160,6 +160,10 @@ An always-on worker would be ~$196/month. Set `IDLE_ACTION=suspend` to keep Dock
 - With a subscription login, `cost_usd` is the API-equivalent figure, not money billed.
 - Old thread folders under `/srv/threadwright/work` are not cleaned up yet.
 - GCP only: the worker VM, queues, session pages and signing key all use Google Cloud.
+- Claude runs as the same Unix user as the worker, so anything the worker can read (the GitHub App key, a `gh` login, the env file through Bash) Claude can read too. Scope the GitHub App to the repos and permissions it needs; a separate user for Claude is the real fix.
+- The egress proxy is a guard rail: tools that ignore proxy settings are not blocked without firewall rules.
+- Watched-channel posts each wake the worker for a short yes/no check; pending checks are forgotten if the listener restarts.
+- A Stop sent while the worker's queue is full waits until a slot frees up.
 
 ## Development
 

@@ -63,6 +63,10 @@ class Store:
         row = self._one("SELECT value FROM kv WHERE key = ?", (key,))
         return str(row[0]) if row else None
 
+    def claim(self, key: str, value: str) -> bool:
+        with self._lock, self._db:
+            return self._db.execute("INSERT OR IGNORE INTO kv VALUES (?, ?)", (key, value)).rowcount == 1
+
     def put(self, key: str, value: str) -> None:
         self._write("INSERT OR REPLACE INTO kv VALUES (?, ?)", (key, value))
 

@@ -204,3 +204,17 @@ def test_a_repeating_step_is_nudged_then_stopped(cfg: Config, tmp_path: Path) ->
 def test_extra_env_reaches_claude_but_slack_tokens_do_not() -> None:
     env = runner.child_env({"SLACK_BOT_TOKEN": "x", "PATH": "/bin"}, {"GH_TOKEN": "t"})
     assert env == {"PATH": "/bin", "GH_TOKEN": "t"}
+
+
+def test_polling_commands_do_not_count_as_stuck() -> None:
+    poll = {"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "name": "Bash", "input": {"command": "sleep 60 && gh pr checks 7"}}]}}
+    assert runner.step_key(poll) is None
+
+
+def test_stop_before_claude_starts_still_stops_it(cfg: Config, tmp_path: Path) -> None:
+    handle = runner.Run()
+    assert handle.stop("Asha")
+    result = runner.run(dataclasses.replace(fake(cfg, tmp_path, "sleep"), task_timeout_s=20), tmp_path, "x", None,
+                        lambda _: None, handle=handle)
+    assert result.text.startswith("Stopped by Asha")

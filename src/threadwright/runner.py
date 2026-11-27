@@ -1,6 +1,7 @@
 import contextlib
 import json
 import os
+import re
 import signal
 import subprocess
 import threading
@@ -15,6 +16,7 @@ from threadwright.config import Config
 _MISSING_SESSION = "No conversation found"
 NUDGE_AFTER = 4
 STOP_AFTER = 7
+_POLLING = re.compile(r"\b(sleep|watch|wait)\b|gh (run|pr) (view|checks|watch)|--watch")
 NUDGE = ("You have run the same step {n} times in a row without progress. Change approach, or stop and report "
          "where you are stuck and what you need.")
 
@@ -72,9 +74,10 @@ def describe(event: dict[str, Any]) -> str | None:
 def step_key(event: dict[str, Any]) -> str | None:
     if event.get("type") != "assistant":
         return None
-    calls = [json.dumps([b.get("name"), b.get("input")], sort_keys=True)
-             for b in event.get("message", {}).get("content", []) if b.get("type") == "tool_use"]
-    return "|".join(calls) or None
+    blocks = [b for b in event.get("message", {}).get("content", []) if b.get("type") == "tool_use"]
+    if any(_POLLING.search(str((b.get("input") or {}).get("command") or "")) for b in blocks):
+        return None
+    return "|".join(json.dumps([b.get("name"), b.get("input")], sort_keys=True) for b in blocks) or None
 
 
 def user_line(text: str) -> str:
@@ -96,6 +99,9 @@ class Run:
     def attach(self, proc: subprocess.Popen[str]) -> None:
         with self._lock:
             self._proc, self._stdin = proc, proc.stdin
+            stopped = bool(self.stopped_by)
+        if stopped:
+            _kill_group(proc)
 
     def send(self, text: str) -> bool:
         with self._lock:
@@ -105,7 +111,9 @@ class Run:
                 self._stdin.write(user_line(text))
                 self._stdin.flush()
             except (BrokenPipeError, ValueError, OSError):
-                self._stdin = None
+                stdin, self._stdin = self._stdin, None
+                with contextlib.suppress(BrokenPipeError, ValueError, OSError):
+                    stdin.close()
                 return False
             return True
 
@@ -119,10 +127,11 @@ class Run:
     def stop(self, who: str) -> bool:
         with self._lock:
             proc = self._proc
-            if proc is None or proc.poll() is not None:
+            if proc is not None and proc.poll() is not None:
                 return False
             self.stopped_by = who
-        _kill_group(proc)
+        if proc is not None:
+            _kill_group(proc)
         return True
 
 
@@ -164,11 +173,11 @@ def run(cfg: Config, cwd: Path, prompt: str, session_id: str | None,
             if key := step_key(event):
                 repeats = repeats + 1 if key == last_step else 1
                 last_step = key
-                if repeats >= NUDGE_AFTER and not nudged:
-                    nudged = handle.send(NUDGE.format(n=repeats))
-                elif repeats >= STOP_AFTER:
+                if repeats >= STOP_AFTER:
                     stuck = True
                     _kill_group(proc)
+                if repeats >= NUDGE_AFTER and not nudged:
+                    nudged = handle.send(NUDGE.format(n=repeats))
             if step := describe(event):
                 on_progress(step)
         proc.wait()
