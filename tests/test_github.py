@@ -34,7 +34,7 @@ def test_only_failed_runs_of_the_bots_own_commits_on_its_branches_count() -> Non
     assert event and (event.kind, event.pr, event.repo) == ("ci", 7, "acme/api")
     assert github.pr_event("workflow_run", run(conclusion="success"), frozenset()) is None
     assert github.pr_event("workflow_run", run(author="Ravi"), frozenset()) is None
-    assert github.pr_event("workflow_run", run(author="Radic Bot"), frozenset({"Radic Bot"}))
+    assert github.pr_event("workflow_run", run(author="Acme Bot"), frozenset({"Acme Bot"}))
     assert github.pr_event("workflow_run", run(branch="main"), frozenset()) is None
 
 
