@@ -25,6 +25,7 @@ class Task:
     asker: str
     event: SlackMessage
     thread: list[SlackMessage]
+    channel_recent: list[SlackMessage] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,8 @@ def _message(raw: dict[str, Any]) -> SlackMessage:
 def decode_task(data: bytes) -> Task:
     raw = json.loads(data)
     return Task(raw["event_id"], raw["channel"], raw["thread_ts"], raw["status_ts"], raw["asker"],
-                _message(raw["event"]), [_message(m) for m in raw["thread"]])
+                _message(raw["event"]), [_message(m) for m in raw["thread"]],
+                [_message(m) for m in raw.get("channel_recent", [])])
 
 
 def decode_update(data: bytes) -> Update:

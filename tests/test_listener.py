@@ -15,6 +15,8 @@ BOT = "UBOT"
 class FakeSlack:
     def __init__(self, history: list[dict[str, Any]]) -> None:
         self.history = history
+        self.channel: list[dict[str, Any]] = []
+        self.history_reads = 0
         self.posted: list[dict[str, Any]] = []
         self.updated: list[dict[str, Any]] = []
         self.update_failures: list[Exception] = []
@@ -34,6 +36,10 @@ class FakeSlack:
         page = self.history[start:start + 2]
         more = start + 2 < len(self.history)
         return {"messages": page, "response_metadata": {"next_cursor": str(start + 2) if more else ""}}
+
+    def conversations_history(self, channel: str, latest: str, inclusive: bool, limit: int) -> dict[str, Any]:
+        self.history_reads += 1
+        return {"messages": [m for m in reversed(self.channel) if float(m["ts"]) < float(latest)][:limit]}
 
     def reactions_add(self, **kwargs: Any) -> None:
         self.reactions.append(("add", kwargs["timestamp"], kwargs["name"]))
@@ -110,6 +116,27 @@ def test_submit_publishes_the_whole_thread_and_round_trips(lcfg: ListenerConfig)
     assert [(m.name, m.text) for m in task.thread] == [("Ravi", "login is broken"), ("Asha", "please fix")]
     assert task.event.text == "please fix"
     assert slack.posted[0]["text"] == "Queued…"
+
+
+def test_a_tag_in_the_channel_brings_recent_channel_messages(lcfg: ListenerConfig) -> None:
+    listener, slack, sent = make(lcfg, [{"ts": "5", "user": "U1", "text": f"<@{BOT}> fix what Ravi said"}])
+    slack.channel = [{"ts": "3", "user": "U2", "text": "checkout 500s since deploy"},
+                     {"ts": "4", "bot_id": "B1", "text": "my old reply"},
+                     {"ts": "4.5", "user": "U1", "text": "same here"},
+                     {"ts": "5", "user": "U1", "text": f"<@{BOT}> fix what Ravi said"}]
+    listener.submit({"type": "app_mention", "channel": "C", "ts": "5", "user": "U1",
+                     "text": f"<@{BOT}> fix what Ravi said"})
+    task = decode_task(encode(sent[0]))
+    assert [(m.name, m.text) for m in task.channel_recent] == [("Ravi", "checkout 500s since deploy"),
+                                                               ("Asha", "same here")]
+
+
+def test_a_tag_inside_a_thread_does_not_read_the_channel(lcfg: ListenerConfig) -> None:
+    history = [{"ts": "1", "user": "U2", "text": "x"}, {"ts": "2", "user": "U1", "text": f"<@{BOT}> y"}]
+    listener, slack, sent = make(lcfg, history)
+    listener.submit({"type": "app_mention", "channel": "C", "ts": "2", "thread_ts": "1", "user": "U1",
+                     "text": f"<@{BOT}> y"})
+    assert slack.history_reads == 0 and sent[0].channel_recent == []
 
 
 def test_duplicate_delivery_is_ignored(lcfg: ListenerConfig) -> None:

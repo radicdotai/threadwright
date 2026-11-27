@@ -20,10 +20,16 @@ def _files(files: list[Path]) -> str:
     return "\n".join(["", "Files attached in Slack (read them):", *(f"- {f}" for f in files)]) if files else ""
 
 
-def initial(asker: str, messages: list[tuple[str, str]], files: list[Path]) -> str:
-    thread = "\n".join(f"[{name}]: {_fence(text)}" for name, text in messages)
-    return (f"{_PREAMBLE}\n\nRequested by: {asker}\n\n<slack_thread>\n{thread}\n</slack_thread>"
-            f"{_files(files)}")
+def _lines(messages: list[tuple[str, str]]) -> str:
+    return "\n".join(f"[{name}]: {_fence(text)}" for name, text in messages)
+
+
+def initial(asker: str, messages: list[tuple[str, str]], files: list[Path],
+            recent: list[tuple[str, str]] | None = None) -> str:
+    channel = (f"\n\nRecent messages in the channel before you were tagged, oldest first, for context:\n"
+               f"<slack_channel>\n{_lines(recent)}\n</slack_channel>") if recent else ""
+    return (f"{_PREAMBLE}\n\nRequested by: {asker}{channel}\n\n<slack_thread>\n{_lines(messages)}\n"
+            f"</slack_thread>{_files(files)}")
 
 
 def follow_up(asker: str, text: str, files: list[Path]) -> str:

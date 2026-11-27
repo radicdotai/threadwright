@@ -164,7 +164,8 @@ class Worker:
 
     def _full_prompt(self, task: Task, root: Path) -> str:
         files = save_files([f for m in task.thread for f in m.files], root / "slack-files")
-        return prompt.initial(task.asker, [(m.name, m.text) for m in task.thread], files)
+        return prompt.initial(task.asker, [(m.name, m.text) for m in task.thread], files,
+                              [(m.name, m.text) for m in task.channel_recent])
 
     def _page(self, task: Task) -> SessionPage | None:
         if not self.upload or not self.cfg.sessions_bucket:
