@@ -154,3 +154,25 @@ def test_sweep_posts_and_starts_a_fresh_task(lcfg: ListenerConfig, tmp_path: Pat
     listener.maybe_sweep(datetime(2026, 11, 30, 6, 0, tzinfo=UTC))
     assert len(sent) == 1 and sent[0].fresh and sent[0].event.text == "find flaky tests"
     assert slack.posted[0]["text"].startswith("Weekly sweep")
+
+
+def test_an_alert_storm_with_different_paths_starts_one_task(lcfg: ListenerConfig) -> None:  # noqa: F811
+    first = ("*<https://g/a/1|#1605 Unhandled exception: TooManyConnectionsError: remaining connection slots are "
+             "reserved - Path: /brands/eb831e43-1f57/guidelines>*")
+    second = first.replace("#1605", "#1606").replace("/brands/eb831e43-1f57/guidelines", "/user/me")
+    assert alert_key(first) == alert_key(second)
+
+
+def test_alerts_from_other_bots_and_beyond_the_hourly_cap_are_ignored(lcfg: ListenerConfig) -> None:  # noqa: F811
+    listener, _, sent = make(dataclasses.replace(lcfg, alert_bots=frozenset({"BG"}), alerts_per_hour=2), [])
+    base = {"type": "message", "channel": "A", "bot_id": "BG", "username": "Grafana"}
+    listener.alert({**base, "ts": "1", "bot_id": "BSTATUS", "text": "Incident: degraded"})
+    for n, text in enumerate(["db down firing", "api 5xx firing", "queue stuck firing"]):
+        listener.alert({**base, "ts": str(n + 2), "text": text})
+    assert [t.event.text.splitlines()[-1] for t in sent] == ["db down firing", "api 5xx firing"]
+
+
+def test_block_kit_alerts_are_read() -> None:
+    message = {"text": "", "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "#9 Disk full firing"}},
+                                      {"type": "context", "elements": [{"type": "mrkdwn", "text": "prod"}]}]}
+    assert message_text(message) == "#9 Disk full firing\nprod"

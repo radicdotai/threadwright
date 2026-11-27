@@ -55,6 +55,7 @@ class ListenerConfig:
     watch_channels: frozenset[str] = frozenset()
     alert_channels: frozenset[str] = frozenset()
     alert_bots: frozenset[str] = frozenset()
+    alerts_per_hour: int = 3
     alert_skip: str = r"(?i)\bresolved\b"
     sweep_channel: str = ""
     sweep_weekday: int = 0
@@ -148,6 +149,7 @@ def load_listener(env: dict[str, str] | None = None) -> ListenerConfig:
         watch_channels=frozenset(_csv(env, "WATCH_CHANNELS")),
         alert_channels=frozenset(_csv(env, "ALERT_CHANNELS")),
         alert_bots=frozenset(_csv(env, "ALERT_BOTS")),
+        alerts_per_hour=int(_get(env, "ALERTS_PER_HOUR", "3")),
         alert_skip=_get(env, "ALERT_SKIP", r"(?i)\bresolved\b"),
         sweep_channel=_get(env, "SWEEP_CHANNEL", ""),
         sweep_weekday=int(_get(env, "SWEEP_WEEKDAY", "0")),

@@ -35,6 +35,7 @@ _RELEASE = re.compile(r"^(hold\s+off|release)$", re.I)
 _STOP = re.compile(r"^(stop|cancel)[.!]?$", re.I)
 _FLAGS = re.compile(r"^\s*(!new|!plan)\b\s*", re.I)
 _ALERT_DEDUPE_S = 6 * 3600
+_HOUR_S = 3600
 _WATCH_TTL_S = 3600
 _QUESTION_CHARS = 2900
 _DAY_S = 24 * 3600
@@ -54,16 +55,28 @@ def parse_flags(text: str) -> tuple[str, bool, bool]:
     return text, fresh, plan
 
 
+def _block_text(block: dict[str, Any]) -> list[str]:
+    found = [str((block.get("text") or {}).get("text") or "")] if isinstance(block.get("text"), dict) else []
+    for child in (block.get("elements") or []) + (block.get("fields") or []):
+        if isinstance(child, dict):
+            found += [str(child.get("text") or "")] if isinstance(child.get("text"), str) else _block_text(child)
+    return found
+
+
 def message_text(message: dict[str, Any]) -> str:
     parts = [message.get("text") or ""]
     for a in message.get("attachments") or []:
         parts += [a.get("title") or "", a.get("text") or a.get("fallback") or ""]
+    if not "".join(parts).strip():
+        for block in message.get("blocks") or []:
+            parts += _block_text(block)
     return "\n".join(p for p in parts if p).strip()
 
 
 def alert_key(text: str) -> str:
     first = (text.strip().splitlines() or [""])[0]
-    return "alert:" + re.sub(r"<[^>]*>|#\d+|\d{3,}", "", first).strip().lower()[:120]
+    plain = re.sub(r"<(?:[^|>]*\|)?([^>]*)>", r"\1", first)
+    return "alert:" + re.sub(r"#\d+|[0-9a-f-]{8,}|\d+", "", plain.lower()).strip()[:60]
 
 
 def sweep_due(now: datetime, weekday: int, at_utc: str, last_week: str | None) -> str | None:
@@ -278,7 +291,10 @@ class Listener:
         key = alert_key(text)
         if self.store.count_since(key, time.time() - _ALERT_DEDUPE_S):
             return
+        if self.store.count_since("alerts", time.time() - _HOUR_S) >= self.cfg.alerts_per_hour:
+            return
         self.store.note(key)
+        self.store.note("alerts")
         self.start(event, prefix=ALERT_PROMPT)
 
     def watch(self, event: dict[str, Any]) -> None:
